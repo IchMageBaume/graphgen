@@ -21,7 +21,7 @@ typedef struct {
 	time_t time;
 } power_t;
 
-power_t* init_power_over_time(char* statefile);
+power_t* init_power_over_time(char* statefile, time_t* start);
 void save_power_over_time(char* statefile);
 void update_power();
 

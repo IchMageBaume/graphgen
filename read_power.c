@@ -2,28 +2,105 @@
 
 int pot_len = 8640;
 
-power_t* power_over_time;
+power_t* power_over_time = NULL;
 
-modbus_t* mb;
+modbus_t* mb = NULL;
 
-power_t* init_power_over_time(char* statefile) {
-	// TODO get values from statefile
+power_t* init_power_over_time(char* statefile, time_t* start) {
+	*start = 0;
+	FILE* f = NULL;
+	if (statefile != NULL) {
+		f = fopen(statefile, "rb");
+	}
 
-	// initialize all elements but the first one
-	// (since that is gonna be overwritten anyway)
-	power_over_time = (power_t*)malloc(pot_len * sizeof(power_t));
-	time_t now = time(NULL);
-	for (int i = 1; i < pot_len; i++) {
-		power_over_time[i].watts = 0;
-		power_over_time[i].time = now - (pot_len - i - 1) * 10;
+	if (f != NULL) {
+		uint8_t len_buf[4];
+		fread(len_buf, 1, 4, f);
+		pot_len =
+			(len_buf[0] << 24) |
+			(len_buf[1] << 16) |
+			(len_buf[2] <<  8) |
+			 len_buf[3];
 
+		power_over_time = (power_t*)malloc(pot_len * sizeof(power_t));
+
+		// buffers get initialized to 0 so it is at least kind of
+		// deterministic what happens if the file is too small
+		for (int i = 0; i < pot_len; i++) {
+			uint8_t watt_buf[2] = { 0 };
+			fread(watt_buf, 1, 2, f);
+			power_over_time[i].watts =
+				(watt_buf[0] << 8) |
+				 watt_buf[1];
+
+			uint8_t time_buf[5] = { 0 };
+			fread(time_buf, 1, 5, f);
+			power_over_time[i].time =
+				((uint64_t)(time_buf[0]) << 32) |
+				           (time_buf[1]  << 24) |
+				           (time_buf[2]  << 16) |
+				           (time_buf[3]  <<  8) |
+				            time_buf[4];
+
+			if (*start == 0 && power_over_time[i].watts != 0) {
+				*start = power_over_time[i].time;
+			}
+		}
+		puts("Restored power history from state file");
+	}
+	else {
+		if (power_over_time == NULL) {
+			power_over_time = (power_t*)malloc(pot_len * sizeof(power_t));
+		}
+
+		// initialize all elements but the first one
+		// (since that is gonna be overwritten anyway)
+		time(start);
+		for (int i = 1; i < pot_len; i++) {
+			power_over_time[i].watts = 0;
+			power_over_time[i].time = *start - (pot_len - i - 1) * 10;
+
+		}
 	}
 
 	return power_over_time;
 }
 
 void save_power_over_time(char* statefile) {
-	// TODO
+	FILE* f = fopen(statefile, "wb");
+
+	// we could ofc just write pot_len, sizeof(int) but I'd like the format to be
+	// machine-independent and thus easier to debug
+	uint8_t len_buf[] = {
+		(pot_len & (0xFF << 24)) >> 24,
+		(pot_len & (0xFF << 16)) >> 16,
+		(pot_len & (0xFF <<  8)) >>  8,
+		 pot_len & 0xFF
+	};
+	fwrite(len_buf, 1, 4, f);
+
+	for (int i = 0; i < pot_len; i++) {
+		uint16_t watts = power_over_time[i].watts;
+		uint8_t watt_buf[] = {
+			(watts & (0xFF << 8)) >> 8,
+			 watts & 0xFF
+		};
+		fwrite(watt_buf, 1, 2, f);
+
+		uint64_t time = power_over_time[i].time;
+		// 5 bytes will last for a few 10k years, 4 wouldn't work after sometime next
+		// century
+		uint8_t time_buf[] = {
+			(time & ((uint64_t)0xFF << 32)) >> 32,
+			(time & ((uint64_t)0xFF << 24)) >> 24,
+			(time & ((uint64_t)0xFF << 16)) >> 16,
+			(time & ((uint64_t)0xFF <<  8)) >>  8,
+			 time & 0xFF
+		};
+		fwrite(time_buf, 1, 5, f);
+	}
+
+	fclose(f);
 }
 
 void open_new_connection() {
