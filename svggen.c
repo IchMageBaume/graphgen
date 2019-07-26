@@ -39,41 +39,43 @@ void create_power_graph_svg(const char* filename, power_t* power_hist, int secs_
 	// show history for 1 day max; maybe make more flexible later
 	if (secs_back > 86400) secs_back = 86400;
 
-	struct tm* newest = &(power_hist[POT_LEN - 1].time);
-	time_t newest_num = mktime(newest);
-	time_t x_0_time = newest_num - secs_back;
+	time_t newest = power_hist[pot_len - 1].time;
+	time_t x_0_time = newest - secs_back;
+	struct tm newest_tm;
+	localtime_r(&newest, &newest_tm);
 
 	int tick_interval, last_tick_back;
 	if (secs_back < 120) {
 		tick_interval = 10;
-		last_tick_back = newest->tm_sec % 10;
+		last_tick_back = newest_tm.tm_sec % 10;
 	}
 	else if (secs_back < 900) {
 		tick_interval = 60;
-		last_tick_back = newest->tm_sec;
+		last_tick_back = newest_tm.tm_sec;
 	}
 	else if (secs_back < 7200) {
 		tick_interval = 600;
-		last_tick_back = newest->tm_sec + (newest->tm_min % 10) * 60;
+		last_tick_back = newest_tm.tm_sec + (newest_tm.tm_min % 10) * 60;
 	}
 	else if (secs_back < 28800) {
 		tick_interval = 3600;
-		last_tick_back = newest->tm_sec + newest->tm_min * 60;
+		last_tick_back = newest_tm.tm_sec + newest_tm.tm_min * 60;
 	}
 	else {
 		tick_interval = 10800;
-		last_tick_back = newest->tm_sec + newest->tm_min * 60 + newest->tm_hour % 3;
+		last_tick_back = newest_tm.tm_sec + newest_tm.tm_min * 60 +
+			newest_tm.tm_hour % 3;
 	}
 
 	char ticks[2048] = { '\0' };
 	char tick_text[2048] = { '\0' };
 	char buf[128];
-	for (time_t i = newest_num - last_tick_back; i >= x_0_time;
+	for (time_t i = newest - last_tick_back; i >= x_0_time;
 		i -= tick_interval)
 	{
 		memset(buf, '\0', 128);
 
-		int offs_from_start = 630 - (newest_num - i) * 560 / secs_back;
+		int offs_from_start = 630 - (newest - i) * 560 / secs_back;
 		sprintf(buf,
 			"<line x1=\"%d\" y1=\"151\" x2=\"%d\" y2=\"168\" class=\"ticks\"/>\n",
 			offs_from_start, offs_from_start);
@@ -81,35 +83,35 @@ void create_power_graph_svg(const char* filename, power_t* power_hist, int secs_
 
 		memset(buf, '\0', 128);
 
-		struct tm* i_localtime = localtime(&i);
+		struct tm* i_tm = localtime(&i);
 		if (secs_back < 120) {
 			sprintf(buf,
 				"<text x=\"%d\" y=\"180\" class=\"timestamps\">%02d:%02d</text>\n",
-				offs_from_start - 20, i_localtime->tm_min, i_localtime->tm_sec);
+				offs_from_start - 20, i_tm->tm_min, i_tm->tm_sec);
 		}
 		else {
 			sprintf(buf,
 				"<text x=\"%d\" y=\"180\" class=\"timestamps\">%d:%02d</text>\n",
-				offs_from_start - 20, i_localtime->tm_hour, i_localtime->tm_min);
+				offs_from_start - 20, i_tm->tm_hour, i_tm->tm_min);
 		}
 		strcat(tick_text, buf);
 	}
 
 	char* points = malloc(100000);
 	off_t points_off = 0;
-	int i = POT_LEN - 1;
+	int i = pot_len - 1;
 	int last_x;
 	for (; i > 0; i--) {
-		time_t power_time = mktime(&(power_hist[i].time));
-		int offs_from_start = 630 - (newest_num - power_time) * 560 / secs_back;
+		time_t power_time = power_hist[i].time;
+		int offs_from_start = 630 - (newest - power_time) * 560 / secs_back;
 		memset(buf, '\0', 128);
 
-		if (power_time >= newest_num - secs_back) {
+		if (power_time >= newest - secs_back) {
 			sprintf(buf, "%d %d, ", offs_from_start,
 				150 - power_hist[i].watts * 130 / 5000);
 			memcpy(points + points_off, buf, strlen(buf));
 			points_off += strlen(buf);
-			if (power_time == newest_num - secs_back) break;
+			if (power_time == newest - secs_back) break;
 		}
 		else {
 			// exit if because of timing stuff last_x is 0 so we don't get a floating

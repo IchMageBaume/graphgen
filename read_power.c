@@ -1,21 +1,29 @@
 #include "read_power.h"
 
-int power_initialized = 0;
+int pot_len = 8640;
 
-// each element is 10s for now, TODO change to 60s
-power_t power_over_time[POT_LEN];
+power_t* power_over_time;
 
 modbus_t* mb;
 
-void init_power_over_time() {
+power_t* init_power_over_time(char* statefile) {
+	// TODO get values from statefile
+
 	// initialize all elements but the first one
 	// (since that is gonna be overwritten anyway)
+	power_over_time = (power_t*)malloc(pot_len * sizeof(power_t));
 	time_t now = time(NULL);
-	for (int i = 1; i < POT_LEN; i++) {
+	for (int i = 1; i < pot_len; i++) {
 		power_over_time[i].watts = 0;
-		time_t next_time = now - (POT_LEN - i - 1) * 10;
-		localtime_r(&next_time, &(power_over_time[i].time));
+		power_over_time[i].time = now - (pot_len - i - 1) * 10;
+
 	}
+
+	return power_over_time;
+}
+
+void save_power_over_time(char* statefile) {
+	// TODO
 }
 
 void open_new_connection() {
@@ -67,15 +75,10 @@ void open_new_connection() {
 
 // this update+return isn't done in a separate thread even though it can take a while
 // since there is no reason to update the svg if we haven't gotten new values
-power_t* update_power() {
-	if (!power_initialized) {
-		init_power_over_time();
-		power_initialized = 1;
-	}
-
+void update_power() {
 	// first copy all elements back, since we're gonna add a new one
 	// (Linked list or ring buffer kinda thing might be faster but I'm too lazy lul)
-	for (int i = 0; i < POT_LEN - 1; i++) {
+	for (int i = 0; i < pot_len - 1; i++) {
 		power_over_time[i] = power_over_time[i + 1];
 	}
 
@@ -83,7 +86,6 @@ power_t* update_power() {
 	if (mb == NULL) open_new_connection();
 
 	uint16_t power;
-	// TODO read over 5 secs or so and take average or median
 	if (modbus_read_registers(mb, 40199, 1, &power) == -1) {
 		puts(modbus_strerror(errno));
 		modbus_close(mb);
@@ -92,9 +94,6 @@ power_t* update_power() {
 		goto retry;
 	}
 
-	time_t unix_now = time(NULL);
-	localtime_r(&unix_now, &(power_over_time[POT_LEN - 1].time));
-	power_over_time[POT_LEN - 1].watts = power * 10;
-
-	return power_over_time;
+	power_over_time[pot_len - 1].time = time(NULL);
+	power_over_time[pot_len - 1].watts = power * 10;
 }

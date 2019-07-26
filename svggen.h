@@ -3,7 +3,7 @@
 
 #include <stdlib.h>
 
-// for power_t
+// for power_t and pot_len
 #include "read_power.h"
 
 void create_power_graph_svg(const char* filename, power_t* power_hist, int secs_back);
