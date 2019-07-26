@@ -16,7 +16,6 @@
 
 extern int pot_len;
 
-// possibly replace 'struct tm time' with 'time_t time' for more speed and less ram
 typedef struct {
 	uint16_t watts;
 	time_t time;
